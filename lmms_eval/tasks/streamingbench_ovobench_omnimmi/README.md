@@ -18,15 +18,17 @@ vLLM servers can run in their own environments on other nodes.
 ```bash
 source .venv/bin/activate
 export LMMS_STREAMING_DATA_ROOT=/local/scratch/streaming-bench
+export BENCH_MANIFEST=/path/to/prepared-data/manifest.json
 bash examples/cache/frame_cache.sh --limit 8 --workers 8
 ```
 
-The default manifest is the frozen internal snapshot at
-`/mnt/hdfs/storage/user/lws/eval_cache/streamingbench_ovobench_omnimmi/v20260920/manifest.json`.
-The new node needs access to that shared storage and the source media mounts.
-This is **not** a newly published public Hugging Face dataset. A standalone
-clone outside that environment requires an accessible mirror via
-`BENCH_MANIFEST`. No credentials or private data are committed to the fork.
+The default manifest location is empty. Download and prepare the benchmark
+data, generate a manifest, and explicitly set `BENCH_MANIFEST` to its path or
+URL. An existing prepared mirror can also be selected. All annotation and
+media locations referenced by that manifest must be accessible on the node.
+This is **not** a newly published public Hugging Face dataset; cloning the
+repository does not download data or populate a frame cache. No credentials
+or private data are committed to the fork.
 
 The fetcher accepts mounted paths, HTTP(S), `hdfs://` and Hugging Face dataset
 URIs. The manifest describes annotation URLs/hashes, video URLs/sizes and
