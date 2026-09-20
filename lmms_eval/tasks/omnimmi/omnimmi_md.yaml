@@ -1,0 +1,59 @@
+task: omnimmi_md
+class: !function lmms_eval.tasks.streamingbench_ovobench_omnimmi.utils.StreamingBenchmarkTask
+dataset_path: json
+test_split: test
+output_type: generate_until_multi_round
+doc_to_messages: !function lmms_eval.tasks.streamingbench_ovobench_omnimmi.utils.doc_to_messages
+doc_to_text: !function lmms_eval.tasks.streamingbench_ovobench_omnimmi.utils.doc_to_text
+doc_to_target: !function lmms_eval.tasks.streamingbench_ovobench_omnimmi.utils.doc_to_target
+process_results: !function lmms_eval.tasks.omnimmi.utils.process_results
+reasoning_tags: none
+generation_kwargs:
+  max_new_tokens: 256
+  temperature: 0
+  do_sample: false
+  extra_body:
+    mm_processor_kwargs:
+      min_pixels: 4096
+      max_pixels: 602112
+metric_list:
+  - metric: accuracy
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.accuracy
+    higher_is_better: true
+  - metric: inference_failures
+    aggregation: !function lmms_eval.tasks.streamingbench.utils.failure_count
+    higher_is_better: false
+  - metric: judge_failures
+    aggregation: !function lmms_eval.tasks.streamingbench.utils.failure_count
+    higher_is_better: false
+  - metric: score_avg
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.score_avg
+    higher_is_better: true
+  - metric: item_accuracy_1
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.item_accuracy_1
+    higher_is_better: true
+  - metric: cumulative_item_accuracy_1
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.accuracy_1
+    higher_is_better: true
+  - metric: item_accuracy_2
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.item_accuracy_2
+    higher_is_better: true
+  - metric: cumulative_item_accuracy_2
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.accuracy_2
+    higher_is_better: true
+  - metric: item_accuracy_3
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.item_accuracy_3
+    higher_is_better: true
+  - metric: cumulative_item_accuracy_3
+    aggregation: !function lmms_eval.tasks.omnimmi.utils.accuracy_3
+    higher_is_better: true
+lmms_eval_specific_kwargs:
+  default:
+    history_layout: packed
+    silence_token: "<silence>"
+    target_fps: 1
+    max_frames: 30
+    max_pixels: 602112
+metadata:
+  version: 1.0
+  protocol: aura_omnimmi_sg_md_si_v1

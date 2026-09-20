@@ -68,6 +68,11 @@ class OpenAIProvider(ServerInterface):
             "messages": messages,
             **build_sampling_kwargs(config),
         }
+        if config.extra_body:
+            if self.use_client:
+                payload["extra_body"] = config.extra_body
+            else:
+                payload.update(config.extra_body)
 
         if config.top_p is not None:
             payload["top_p"] = config.top_p

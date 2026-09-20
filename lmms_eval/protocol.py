@@ -109,7 +109,7 @@ class ChatMessages(BaseModel):
                     openai_message["content"].append(
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:{mime_type};base64,{self.encode_image(content.url, encode_cache, image_format, quality)}"},
+                            "image_url": {"url": content.url if isinstance(content.url, str) and content.url.startswith("data:image/") else f"data:{mime_type};base64,{self.encode_image(content.url, encode_cache, image_format, quality)}"},
                         }
                     )
                 elif content.type == "video":
@@ -161,7 +161,7 @@ class ChatMessages(BaseModel):
                     openai_message["content"].append(
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:{mime_type};base64,{self.encode_image(content.url, encode_cache, image_format, quality)}"},
+                            "image_url": {"url": content.url if isinstance(content.url, str) and content.url.startswith("data:image/") else f"data:{mime_type};base64,{self.encode_image(content.url, encode_cache, image_format, quality)}"},
                         }
                     )
                 elif content.type == "video":

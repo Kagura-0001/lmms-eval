@@ -1,0 +1,9 @@
+# Configure roots/endpoints in the environment; one config for smoke and full.
+model: async_openai
+model_args: "model_version=qwen-step8816-7baa9a18,api_key=EMPTY,num_cpus=8,max_retries=2,timeout=600,is_qwen3_vl=False,prefix_aware_queue=False"
+tasks: streamingbench_ovobench_omnimmi
+batch_size: 1
+num_fewshot: 0
+seed: [42, 42, 42, 42]
+log_samples: true
+output_path: results/streamingbench_ovobench_omnimmi

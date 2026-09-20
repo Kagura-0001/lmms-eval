@@ -1,0 +1,16 @@
+group: streamingbench_ovobench_omnimmi
+task:
+  - streamingbench_rt
+  - streamingbench_osu
+  - streamingbench_mcu
+  - streamingbench_acu
+  - streamingbench_sqa
+  - ovo_rec
+  - ovo_ssr
+  - ovo_crr
+  - ovo_backward_realtime
+  - omnimmi_ap
+  - omnimmi_sg
+  - omnimmi_md
+  - omnimmi_si
+

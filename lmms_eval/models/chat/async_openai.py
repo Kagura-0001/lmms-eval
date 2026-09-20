@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import time
 import uuid
+from dataclasses import replace
 from multiprocessing import cpu_count
 from typing import List, Optional, Tuple
 
@@ -156,8 +157,74 @@ class AsyncOpenAIChat(lmms):
     def loglikelihood(self, requests: List[Instance]) -> List[Tuple[float, bool]]:
         assert False, "TODO, not implemented"
 
-    def generate_until_multi_round(self, requests) -> List[str]:
-        raise NotImplementedError("TODO: Implement multi-round generation for LLaVAHF")
+    async def _run_with_client(self, run):
+        # Each synchronous generation call owns an asyncio.run event loop.
+        # Close pooled HTTP connections before that loop exits, including when
+        # switching between single-turn and multi-round request types.
+        async with AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout) as client:
+            self.client = client
+            return await run()
+
+    def generate_until_multi_round(self, requests: List[Instance]) -> List[List[str]]:
+        """Run task-defined rounds serially, with independent sessions concurrent.
+
+        Match the existing chat/vllm callback contract. The task owns history
+        construction; the backend never implicitly appends earlier messages.
+        A failed round is recorded explicitly and returned to the next callback.
+        """
+
+        async def run():
+            semaphore = asyncio.Semaphore(max(1, self.num_cpus))
+
+            async def run_session(request: Instance, index: int):
+                ctx, callback, kwargs, doc_id, task, split = request.args
+                doc = self.task_dict[task][split][doc_id]
+                outputs = []
+                previous_round_info = None
+                while True:
+                    try:
+                        if not outputs:
+                            messages = await asyncio.to_thread(callback, doc)
+                        else:
+                            payload = await asyncio.to_thread(callback, doc, round_idx=len(outputs), previous_output=list(outputs), previous_round_info=previous_round_info)
+                            if not isinstance(payload, tuple) or len(payload) != 4:
+                                raise TypeError("Multi-round callback must return (messages, terminal, previous_output, previous_round_info)")
+                            messages, terminal, _, previous_round_info = payload
+                            if terminal:
+                                break
+                    except (OSError, ValueError) as exc:
+                        # Retain this round in the denominator; do not retry bad media.
+                        outputs.append(f"[LMMS_EVAL_ERROR] {type(exc).__name__}: {exc}")
+                        continue
+
+                    def prepared_messages(_doc):
+                        return messages
+
+                    current = replace(request, arguments=(ctx, prepared_messages, dict(kwargs), doc_id, task, split))
+                    if is_budget_exceeded():
+                        outputs.append("[LMMS_EVAL_BUDGET_EXCEEDED]")
+                        break
+                    for attempt in range(max(1, self.max_retries)):
+                        try:
+                            content, _, _ = await self.maybe_forward_with_tool(current, index)
+                            outputs.append(content)
+                            break
+                        except Exception as exc:
+                            if attempt + 1 == max(1, self.max_retries):
+                                outputs.append(f"[LMMS_EVAL_ERROR] {type(exc).__name__}: {exc}")
+                            else:
+                                await asyncio.sleep(self.retry_backoff_s * (attempt + 1))
+                return outputs
+
+            async def session(request: Instance, index: int):
+                # Bound frame preparation as well as HTTP requests; otherwise
+                # all sessions could materialize large image payloads at once.
+                async with semaphore:
+                    return await run_session(request, index)
+
+            return await asyncio.gather(*(session(request, index) for index, request in enumerate(requests)))
+
+        return asyncio.run(self._run_with_client(run))
 
     async def maybe_forward_with_tool(self, request: Instance, idx: int):
         """
@@ -169,7 +236,10 @@ class AsyncOpenAIChat(lmms):
         :param idx: The index of the request in the batch. (Use to restore the original order of responses)
         """
         ctx, doc_to_messages, gen_kwargs, doc_id, task, split = request.args
-        chat_messages = doc_to_messages(self.task_dict[task][split][doc_id])
+        # Filling transport defaults must not change the request's cache key
+        # between the evaluator's lookup and its subsequent write.
+        gen_kwargs = dict(gen_kwargs)
+        chat_messages = await asyncio.to_thread(doc_to_messages, self.task_dict[task][split][doc_id])
         chat_messages: ChatMessages = ChatMessages(**{"messages": chat_messages})
         video_kwargs = {"max_pixels": self.max_pixels, "min_pixels": self.min_pixels}
         if self.fps is not None:
@@ -179,9 +249,9 @@ class AsyncOpenAIChat(lmms):
         if self.max_frames is not None:
             video_kwargs["max_frames"] = self.max_frames
         if self.is_qwen3_vl:
-            messages = chat_messages.to_qwen3_vl_openai_messages(video_kwargs)
+            messages = await asyncio.to_thread(chat_messages.to_qwen3_vl_openai_messages, video_kwargs)
         else:
-            messages = chat_messages.to_openai_messages(video_kwargs)
+            messages = await asyncio.to_thread(chat_messages.to_openai_messages, video_kwargs)
         messages = self._apply_system_prompt(messages, self.system_prompt) if self.system_prompt else messages
         images, videos, audios = chat_messages.extract_media()
         if self.mcp_client is not None:
@@ -220,6 +290,8 @@ class AsyncOpenAIChat(lmms):
         # payload["max_completion_tokens"] = gen_kwargs["max_new_tokens"]
         payload["max_tokens"] = gen_kwargs["max_new_tokens"]
         payload["temperature"] = gen_kwargs["temperature"]
+        if "extra_body" in gen_kwargs:
+            payload["extra_body"] = gen_kwargs["extra_body"]
 
         if self.mcp_client is not None:
             # get the function list from the MCP server
@@ -454,7 +526,7 @@ class AsyncOpenAIChat(lmms):
             pbar.close()
             return res
 
-        eval_results = asyncio.run(run())
+        eval_results = asyncio.run(self._run_with_client(run))
         eval_results.sort(key=lambda x: x[1])  # Sort by index to restore original
         results = results + [content for content, _ in eval_results]
         if self.mcp_client is not None:

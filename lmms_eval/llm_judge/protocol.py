@@ -21,6 +21,7 @@ class ServerConfig:
     num_retries: int = DEFAULT_NUM_RETRIES
     retry_delay: float = DEFAULT_RETRY_DELAY
     max_concurrent: int = 10  # Maximum concurrent requests
+    extra_body: Optional[Dict[str, Any]] = None
 
     # Additional config for specific judge tasks
     system_prompt: Optional[str] = None
